@@ -9,3 +9,10 @@
 * selenium/standalone-chrome
 
 * https://zhuanlan.zhihu.com/p/443481992
+
+# 涉及其他
+～～～
+pip3 install pillow
+pip3 install opencv-python
+
+～～～
