@@ -15,12 +15,16 @@ from PIL import Image
 import io
 from io import BytesIO
 import cv2
+import sys
+from urllib.request import urlopen
+from urllib.parse import urlencode
+from urllib import parse
 
 class qq(object):
     def __init__(self):
         chrome_option = webdriver.ChromeOptions()
-        UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36'
-        chrome_option.add_argument('User-Agent=' + UserAgent)
+        user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36'
+        chrome_option.add_argument('User-Agent=' + user_agent)
         # proxy 代理 options 选项
                 
         #代理IP池
@@ -38,6 +42,11 @@ class qq(object):
 
         self.driver.set_window_size(1440, 900)
 
+        self.zhanghao = sys.argv[1]
+        self.mima = sys.argv[2]
+
+        self.api = 'http://localhost/api/v1'
+
     def landpage(self):
         try:
             url="https://mail.qq.com/"
@@ -54,9 +63,9 @@ class qq(object):
             
             txt1 = self.driver.find_element(By.ID,'u')
             txt2 = self.driver.find_element(By.ID,'p')
-            txt1.send_keys("zhanghao")
+            txt1.send_keys(self.zhanghao)
             time.sleep(1)
-            txt2.send_keys("zhanghao2")
+            txt2.send_keys(self.mima)
             time.sleep(1)
 
             self.driver.get_screenshot_as_file("shot01.png")
@@ -65,66 +74,76 @@ class qq(object):
             self.driver.find_element(By.ID, 'login_button').click()
 
             #出现拼图iframe
-            left_1 = 1200 - 334 # 在网站中的位置
-            top_1 = 200 # 在网站中的位置
             time.sleep(3)
             self.driver.get_screenshot_as_file("shot02.png")
-            try:
-                self.driver.switch_to.frame('tcaptcha_iframe_dy')    #进入拼图
-
-                bg = self.driver.find_element(By.XPATH,'//*[@id="slideBg"]')
-                bg.screenshot('pintu_origin.png')
-
-                #缺口图片//*
-                list_dom = self.driver.find_elements(By.XPATH,'//*[@id="tcOperation"]/div')
-                for dom in list_dom:
-                    if dom.get_attribute('style').count('background-image') > 0 and dom.size['width'] < 100:
-                        dom.screenshot('quekou.png')
-                        break
-
-                self.driver.execute_script('arguments[0].style.display="none"',dom)    # 隐藏缺口，好给后面的拼图截图
-
-                #拼图背景图//*[@id="slideBg"]
-                bg.screenshot('pintu.png')
-
-                self.driver.execute_script('arguments[0].style.display=""',dom)  #显示缺口
-
-                cv2_left = self.identify_gap('pintu.png','quekou.png') #cv2匹配检查出的离背景左边边缘的距离
-                print('cv2 get the left x is ',cv2_left)
-
-                # #拖动按钮
-                list_sytle = dom.get_dom_attribute("style").split(';')
-                print(list_sytle)
-                left_x = 0 # 拖动按钮离背景左边边缘的距离
-                for name in list_sytle:
-                    if name.count('left:')>0:
-                        left_x = name.split(':')[1].replace('px','').replace(' ','')
-                        print('left_x ',left_x)
-                        break
-
-                print(cv2_left , left_x)
-                if abs(left_x) - abs(cv2_left) < 20: #可能就是没正确识别出来距离
-                    #点击刷新拼图
-                    return
-
-
-                return    
-                juli = int(cv2_left) - int(left_x)
-                print(juli)
-                self.start_move(juli)
-
-            finally:
-                time.sleep(1)
+            self.driver.switch_to.frame('tcaptcha_iframe_dy')    #进入拼图
+            self.pintu()
 
             # page_source =  self.driver.page_source
             # print(page_source)
 
             #返回主框架
             self.driver.switch_to.default_content()
-        except:
-            print('exception...')    
+        except Exception as e:
+            print(e)    
+            # f = open('e.html','w')
+            # f.write(self.driver.page_source)
+            # f.close()
+            #网络波动
+            urlopen(self.api + '/qq/bodong?' + parse.urlencode({
+                'qq': self.zhanghao,
+            }))
         finally:
             self.driver.quit()
+
+    def pintu(self):#拼图验证，距离不对就递归调用
+        time.sleep(3)
+
+        bg = self.driver.find_element(By.XPATH,'//*[@id="slideBg"]')
+        bg.screenshot('pintu_origin.png')
+
+        #缺口图片
+        list_dom = self.driver.find_elements(By.XPATH,'//*[@id="tcOperation"]/div')
+        #得到缺口图片，赋给dom
+        for dom in list_dom:
+            if dom.get_attribute('style').count('background-image') > 0 and dom.size['width'] < 100:
+                dom.screenshot('quekou.png')
+
+                self.driver.execute_script('arguments[0].style.display="none"',dom)    # 隐藏缺口，好给后面的拼图截图
+                time.sleep(1)
+                bg.screenshot('pintu_bg.png') #截图
+
+                break
+
+        self.driver.execute_script('arguments[0].style.display=""',dom)  #显示缺口
+        time.sleep(1)
+        edge_left = self.identify_gap('pintu_bg.png','quekou.png') #cv2匹配检查出的离背景左边边缘的距离
+        print('识别出背景图片的缺口距离边距 ',edge_left)
+
+        # #拖动按钮
+        list_sytle = dom.get_dom_attribute("style").split(';')
+        print(list_sytle)
+        left_x = 0 # 拖动按钮离背景左边边缘的距离
+        for name in list_sytle:
+            if name.count('left:')>0:
+                left_x = name.split(':')[1].replace('px','').replace(' ','')
+                print('拖动按钮距离边距 ',left_x)
+                break
+
+        left_x = float(left_x)    
+        tuodongjuli = abs(edge_left - left_x)
+        if  tuodongjuli < 20: #可能就是没正确识别出来距离
+            print('刷新操作，距离 ',tuodongjuli)
+             #点击刷新拼图
+            self.driver.find_element(By.ID,'e_reload').click()
+            #点击刷新拼图 再次 尝试拼图
+            self.pintu()
+            return
+        else:
+            print('还需要向右拖动 ',tuodongjuli)
+
+        self.start_move(tuodongjuli)
+
 
     #参考资料 https://blog.csdn.net/zhangzeyuaaa/article/details/119508407    
     def identify_gap(self,bg,tp):
@@ -175,14 +194,52 @@ class qq(object):
                 span = random.randint(2, 3)
             ActionChains(self.driver).move_by_offset(span, 0).perform()
             distance -= span
-            self.driver.get_screenshot_as_file("move"+distance+".png") #连拍
+            #self.driver.get_screenshot_as_file("movepng/d"+str(distance)+".png") #连拍
             time.sleep(random.randint(10, 50) / 100)
-
+   
         ActionChains(self.driver).move_by_offset(distance, 1).perform()
         ActionChains(self.driver).release(on_element=element).perform()
 
+        
+        #查看是否有登录的反馈错误提示信息
+        time.sleep(2)
+        self.driver.switch_to.default_content()
+
+        #记录此时的源代码
+        f = open('after_click_login.html','w')
+        f.write(self.driver.page_source)
+        f.close()
+        
+        login_err_msg = ''
+        try:
+            time.sleep(1)
+            self.driver.switch_to.frame('login_frame') #切换不过去iframe，说明此时已经登录成功了
+            login_err_msg = ''
+
+            #识别提示信息
+            check_times = 0
+
+            while(check_times<5): #循环查看是否有了错误提示反馈
+                check_times += 1
+                login_err_msg = self.driver.find_element(By.ID,'err_m').get_attribute('textContent').strip()
+                if len(login_err_msg) == 0:
+                    time.sleep(0.2)
+                    continue
+                
+        except:
+            login_err_msg = ''
+        
+        print(login_err_msg)
+        #上报结果
+        urlopen(self.api + '/qq/save?' + parse.urlencode({
+            'qq': self.zhanghao,
+            'msg': login_err_msg,
+        }))
+
+# python3 qq.py 账号 密码
 if __name__ == "__main__":
     h = qq()
+    print(sys.argv[1],sys.argv[2])
     h.landpage()
 
 
